@@ -7,20 +7,28 @@ import {
   OnInit,
   OnDestroy
 } from '@angular/core';
+
+import {
+  Router
+} from '@angular/router';
+
 import {
   AngularFirestore,
   AngularFirestoreDocument
-} from 'angularfire2/firestore';
-import { FormControl, FormGroup } from '@angular/forms';
-import { tap, map, take, debounceTime } from 'rxjs/operators';
+} from '@angular/fire/firestore';
+
+import { FormGroup } from '@angular/forms';
+import { tap, take, debounceTime } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
 
 @Directive({
+  // tslint:disable-next-line: directive-selector
   selector: '[fireForm]'
 })
 export class FireFormDirective implements OnInit, OnDestroy {
 
   @Input() path: string;
+  @Input() useRoute: boolean;
   @Input() formGroup: FormGroup;
 
   private _state: 'loading' | 'synced' | 'modified' | 'error';
@@ -34,7 +42,10 @@ export class FireFormDirective implements OnInit, OnDestroy {
   // Subscriptions
   private formSub: Subscription;
 
-  constructor(private afs: AngularFirestore) { }
+  constructor(
+    private afs: AngularFirestore,
+    private router: Router
+  ) { }
 
 
   ngOnInit() {
@@ -61,25 +72,25 @@ export class FireFormDirective implements OnInit, OnDestroy {
       .subscribe();
   }
 
-  
+
   // Autosaves form changes
   autoSave() {
     this.formSub = this.formGroup.valueChanges
-    .pipe(
-      tap(change => {
-        this.state = 'modified';
-      }),
-      debounceTime(2000),
-      tap(change => {
-        if (this.formGroup.valid && this._state === 'modified') {
-          this.setDoc();
-        }
-      })
-    )
-    .subscribe();
+      .pipe(
+        tap(change => {
+          this.state = 'modified';
+        }),
+        debounceTime(2000),
+        tap(change => {
+          if (this.formGroup.valid && this._state === 'modified') {
+            this.setDoc();
+          }
+        })
+      )
+      .subscribe();
   }
 
-  
+
 
   @HostListener('ngSubmit', ['$event'])
   onSubmit(e) {
@@ -89,11 +100,26 @@ export class FireFormDirective implements OnInit, OnDestroy {
 
   // Determines if path is a collection or document
   getDocRef(path: string): any {
-    if (path.split('/').length % 2) {
-      return this.afs.doc(`${path}/${this.afs.createId()}`);
+    let _path;
+
+    if (this.useRoute) {
+      _path = this.formatDbPathFromUrl(this.router.url).split('/');
     } else {
-      return this.afs.doc(path);
+      _path = path.split('/');
     }
+
+    if (_path.length % 2 || _path[_path.length - 1] === 'new') {
+      console.log('createId', _path);
+      return this.afs.doc(`${_path[0]}/${this.afs.createId()}`);
+    } else {
+      return this.afs.doc(_path);
+    }
+  }
+
+  private formatDbPathFromUrl(url: string): string {
+    url = url.slice(1);
+    console.log('url', url);
+    return url;
   }
 
   // Writes changes to Firestore
@@ -107,7 +133,7 @@ export class FireFormDirective implements OnInit, OnDestroy {
       this.state = 'error';
     }
   }
-  
+
   // Setter for state changes
   set state(val) {
     this._state = val;
@@ -117,7 +143,5 @@ export class FireFormDirective implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.formSub.unsubscribe();
   }
-
-
 
 }
